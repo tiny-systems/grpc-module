@@ -8,8 +8,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/tiny-systems/grpc-module/client"
-	_ "github.com/tiny-systems/grpc-module/client"
+	_ "github.com/tiny-systems/grpc-module/components/client"
+	client2 "github.com/tiny-systems/grpc-module/components/client"
 	"github.com/tiny-systems/module/cli"
 	"log"
 	"os"
@@ -23,9 +23,9 @@ var rootCmd = &cobra.Command{
 	Short: "tiny-system's gRPC module",
 	Run: func(cmd *cobra.Command, args []string) {
 
-		data, err := json.Marshal(&client.Settings{
-			Service: client.ServiceName{
-				Enum: client.Enum{
+		data, err := json.Marshal(&client2.Settings{
+			Service: client2.ServiceName{
+				Enum: client2.Enum{
 					Value:   "servicename",
 					Options: []string{"second"},
 				},

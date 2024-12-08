@@ -3,11 +3,18 @@ module github.com/tiny-systems/grpc-module
 go 1.23.3
 
 require (
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
+	github.com/fullstorydev/grpcurl v1.9.2
 	github.com/goccy/go-json v0.10.2
+	github.com/golang/protobuf v1.5.4
+	github.com/jhump/protoreflect/v2 v2.0.0-beta.2
 	github.com/rs/zerolog v1.33.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
+	github.com/swaggest/jsonschema-go v0.3.70
 	github.com/tiny-systems/module v0.1.107
+	google.golang.org/grpc v1.66.2
+	google.golang.org/protobuf v1.34.2
 )
 
 require (
@@ -18,7 +25,6 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20240423153145-555b57ec207b // indirect
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker v24.0.6+incompatible // indirect
@@ -29,7 +35,6 @@ require (
 	github.com/envoyproxy/protoc-gen-validate v1.0.4 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
-	github.com/fullstorydev/grpcurl v1.9.2 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/getkin/kin-openapi v0.124.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
@@ -40,7 +45,6 @@ require (
 	github.com/go-openapi/swag v0.22.8 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
@@ -52,7 +56,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/yaml v0.2.0 // indirect
 	github.com/jhump/protoreflect v1.17.1-0.20240913204751-8f5fd1dcb3c5 // indirect
-	github.com/jhump/protoreflect/v2 v2.0.0-beta.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
@@ -85,7 +88,6 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/spyzhov/ajson v0.9.4 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/swaggest/jsonschema-go v0.3.70 // indirect
 	github.com/swaggest/refl v1.3.0 // indirect
 	github.com/tiny-systems/errorpanic v0.7.1 // indirect
 	github.com/tiny-systems/platform-api v0.0.10 // indirect
@@ -117,8 +119,6 @@ require (
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240604185151-ef581f913117 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
-	google.golang.org/grpc v1.66.2 // indirect
-	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
