@@ -3,15 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/goccy/go-json"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	_ "github.com/tiny-systems/grpc-module/components/client"
-	client2 "github.com/tiny-systems/grpc-module/components/client"
 	"github.com/tiny-systems/module/cli"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,20 +18,7 @@ var rootCmd = &cobra.Command{
 	Use:   "server",
 	Short: "tiny-system's gRPC module",
 	Run: func(cmd *cobra.Command, args []string) {
-
-		data, err := json.Marshal(&client2.Settings{
-			Service: client2.ServiceName{
-				Enum: client2.Enum{
-					Value:   "servicename",
-					Options: []string{"second"},
-				},
-			},
-		})
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		spew.Dump(string(data))
+		_ = cmd.Help()
 	},
 }
 
