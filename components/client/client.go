@@ -10,6 +10,7 @@ import (
 	"github.com/jhump/protoreflect/v2/grpcdynamic"
 	"github.com/jhump/protoreflect/v2/grpcreflect"
 	"github.com/swaggest/jsonschema-go"
+	"github.com/tiny-systems/module/api/v1alpha1"
 	"github.com/tiny-systems/module/module"
 	"github.com/tiny-systems/module/registry"
 	"google.golang.org/grpc"
@@ -95,10 +96,10 @@ func (h *Component) GetInfo() module.ComponentInfo {
 	}
 }
 
-func (h *Component) Handle(ctx context.Context, handler module.Handler, port string, msg interface{}) error {
+func (h *Component) Handle(ctx context.Context, handler module.Handler, port string, msg interface{}) any {
 
 	switch port {
-	case module.SettingsPort:
+	case v1alpha1.SettingsPort:
 		in, ok := msg.(Settings)
 		if !ok {
 			return fmt.Errorf("invalid settings")
@@ -210,7 +211,7 @@ func (h *Component) Ports() []module.Port {
 			},
 		},
 		{
-			Name:          module.SettingsPort,
+			Name:          v1alpha1.SettingsPort,
 			Label:         "Settings",
 			Configuration: h.settings,
 		},
