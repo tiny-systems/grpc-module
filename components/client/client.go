@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	ComponentName = "grpc_client"
+	ComponentName = "grpc_call"
 	RequestPort   = "request"
 	ResponsePort  = "response"
 	ErrorPort     = "error"
