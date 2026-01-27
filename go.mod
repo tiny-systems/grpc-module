@@ -13,7 +13,7 @@ require (
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.19.0
 	github.com/swaggest/jsonschema-go v0.3.70
-	github.com/tiny-systems/module v0.1.253
+	github.com/tiny-systems/module v0.1.261
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -218,5 +218,3 @@ require (
 )
 
 //replace github.com/tiny-systems/module => ../../module
-
-replace github.com/spyzhov/ajson v0.9.4 => github.com/tiny-systems/ajson v0.1.4
