@@ -13,7 +13,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.20.1
 	github.com/swaggest/jsonschema-go v0.3.79
-	github.com/tiny-systems/module v0.2.0
+	github.com/tiny-systems/module v0.5.0
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 )
