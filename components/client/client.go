@@ -58,11 +58,6 @@ type ResponseMsg struct {
 	MessageDescriptor
 }
 
-type Error struct {
-	Context Context `json:"context"`
-	Error   string  `json:"error"`
-}
-
 type Request struct {
 	Context Context    `json:"context" configurable:"true" title:"Context" description:"Arbitrary message to be send alongside with encoded message"`
 	Request RequestMsg `json:"request" required:"true" title:"Request message" description:""`
@@ -114,7 +109,6 @@ func (h *Component) Handle(ctx context.Context, handler module.Handler, port str
 		return module.Fail(fmt.Errorf("unknown port: %s", port))
 	}
 
-
 	in, ok := msg.(Request)
 	if !ok {
 		return module.Fail(fmt.Errorf("invalid input"))
@@ -122,13 +116,17 @@ func (h *Component) Handle(ctx context.Context, handler module.Handler, port str
 
 	data, err := h.invoke(ctx, in.Request)
 	if err != nil {
+		// Left unmarked on purpose, transient causes included. Which method this
+		// calls is chosen at configure time out of whatever the server exposes by
+		// reflection, so we have no idea whether it is a read or a charge. Worse,
+		// a dropped connection or DEADLINE_EXCEEDED tells us nothing about
+		// whether the server ran it — the classic ambiguous-failure case. Only
+		// the flow author knows their method is idempotent; if it is, they can
+		// wire this port into the retry component themselves.
 		if !h.settings.EnableErrorPort {
 			return module.Fail(err)
 		}
-		return handler(ctx, ErrorPort, Error{
-			Context: in.Context,
-			Error:   err.Error(),
-		})
+		return handler(ctx, ErrorPort, module.NewError(in.Context, err))
 	}
 	return handler(ctx, ResponsePort, Response{
 		Response: ResponseMsg{
@@ -226,7 +224,7 @@ func (h *Component) Ports() []module.Port {
 		Name:          ErrorPort,
 		Label:         "Error",
 		Source:        true,
-		Configuration: Error{},
+		Configuration: module.ErrorMessage{},
 	})
 }
 
