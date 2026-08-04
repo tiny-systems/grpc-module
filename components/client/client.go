@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"github.com/fullstorydev/grpcurl"
 	"github.com/goccy/go-json"
@@ -15,13 +16,17 @@ import (
 	"github.com/tiny-systems/module/registry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 	"sort"
+	"strings"
+	"time"
 )
 
 const (
@@ -35,8 +40,8 @@ type Context any
 
 type Settings struct {
 	Address         string      `json:"address" title:"gRPC server address" required:"true" tab:"Connect"`
-	Insecure        bool        `json:"insecure" title:"Insecure mode" default:"false" tab:"Connect"`
-	KeepAlive       bool        `json:"keepAlive" title:"Keep Alive" default:"false" tab:"Connect"`
+	Insecure        bool        `json:"insecure" title:"Insecure mode" default:"false" tab:"Connect" description:"Connect without TLS (plaintext). When off, TLS with system root certificates is used."`
+	KeepAlive       bool        `json:"keepAlive" title:"Keep Alive" default:"false" tab:"Connect" description:"Send HTTP/2 keepalive pings (every 30s, 10s timeout) to hold long-lived connections open, even while idle."`
 	Service         ServiceName `json:"service" title:"Service" description:"Name of the service" tab:"Request"`
 	Method          MethodName  `json:"method" title:"Method" description:"Name of the gRPC method" tab:"Request"`
 	EnableErrorPort bool        `json:"enableErrorPort" required:"true" title:"Enable Error Port" tab:"General" description:"If error happen, error port will emit an error message"`
@@ -60,9 +65,18 @@ type ResponseMsg struct {
 	MessageDescriptor
 }
 
+// Header is a single gRPC metadata key/value pair (same shape convention as
+// http-module's etc.Header, defined locally to avoid a cross-module import).
+type Header struct {
+	Key   string `json:"key" required:"true" title:"Key" colSpan:"col-span-6"`
+	Value string `json:"value" required:"true" title:"Value" colSpan:"col-span-6"`
+}
+
 type Request struct {
-	Context Context    `json:"context" configurable:"true" title:"Context" description:"Arbitrary message to be send alongside with encoded message"`
-	Request RequestMsg `json:"request" required:"true" title:"Request message" description:""`
+	Context     Context    `json:"context" configurable:"true" title:"Context" description:"Arbitrary message to be send alongside with encoded message"`
+	BearerToken string     `json:"bearerToken,omitempty" format:"password" title:"Bearer Token" description:"Sent as 'authorization: Bearer <token>' call metadata. An explicit authorization header below overrides it."`
+	Headers     []Header   `json:"headers,omitempty" title:"Metadata Headers" description:"Extra metadata key/value pairs sent with the call"`
+	Request     RequestMsg `json:"request" required:"true" title:"Request message" description:""`
 }
 
 type Response struct {
@@ -88,7 +102,7 @@ func (h *Component) GetInfo() module.ComponentInfo {
 	return module.ComponentInfo{
 		Name:        ComponentName,
 		Description: "gRPC request",
-		Info:        "Sends grpc request",
+		Info: "Calls a unary gRPC method on a remote server. Services, methods and message schemas are discovered at configuration time via server reflection, so no proto files are needed — the server must have the reflection service enabled. Connections use TLS with system root certificates by default; enable 'Insecure mode' in settings to talk to plaintext (non-TLS) servers. Each request can attach call metadata: a Bearer Token field (sent as 'authorization: Bearer <token>') and arbitrary key/value headers. An optional Keep Alive setting sends HTTP/2 pings to hold long-lived connections open. Only unary methods are supported — client, server and bidirectional streaming methods are not.",
 		Tags:        []string{"grpc", "client"},
 	}
 }
@@ -116,7 +130,7 @@ func (h *Component) Handle(ctx context.Context, handler module.Handler, port str
 		return module.Fail(fmt.Errorf("invalid input"))
 	}
 
-	data, err := h.invoke(ctx, in.Request)
+	data, err := h.invoke(ctx, in)
 	if err != nil {
 		// invoke classifies the failure by gRPC status code (transient codes are
 		// marked module.Retryable, client-fault codes module.Permanent), so both
@@ -136,7 +150,7 @@ func (h *Component) Handle(ctx context.Context, handler module.Handler, port str
 	})
 }
 
-func (h *Component) invoke(ctx context.Context, msg any) ([]byte, error) {
+func (h *Component) invoke(ctx context.Context, req Request) ([]byte, error) {
 	if h.currentMethodDesc == nil {
 		return nil, fmt.Errorf("no method descriptor configured")
 	}
@@ -144,13 +158,17 @@ func (h *Component) invoke(ctx context.Context, msg any) ([]byte, error) {
 	input := h.currentMethodDesc.Input()
 	inputMsg := dynamicpb.NewMessage(input)
 
-	data, err := json.Marshal(msg)
+	data, err := json.Marshal(req.Request)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := jsonpb.Unmarshal(bytes.NewReader(data), inputMsg); err != nil {
 		return nil, fmt.Errorf("proto unmarshal: %w", err)
+	}
+
+	if headers := requestMetadataHeaders(req); len(headers) > 0 {
+		ctx = metadata.NewOutgoingContext(ctx, grpcurl.MetadataFromHeaders(headers))
 	}
 	//
 	resp, err := grpcdynamic.NewStub(h.clientConn).InvokeRpc(ctx, h.currentMethodDesc, inputMsg)
@@ -245,27 +263,67 @@ func (h *Component) Ports() []module.Port {
 	})
 }
 
-func (h *Component) connectAndDiscover(ctx context.Context, settings *Settings) error {
-	var opts []grpc.DialOption
-	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+// buildDialOptions derives the dial options every connection of this component
+// shares: transport credentials (TLS with system roots by default, plaintext
+// when Insecure is set) and optional client-side keepalive pings.
+func buildDialOptions(settings *Settings) []grpc.DialOption {
+	opts := make([]grpc.DialOption, 0, 2)
+	if settings.Insecure {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
+	}
+	if settings.KeepAlive {
+		opts = append(opts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                30 * time.Second,
+			Timeout:             10 * time.Second,
+			PermitWithoutStream: true,
+		}))
+	}
+	return opts
+}
 
+// requestMetadataHeaders flattens the request's auth/metadata fields into the
+// "key: value" strings grpcurl.MetadataFromHeaders expects. BearerToken is a
+// convenience that becomes an "authorization: Bearer <token>" pair; an
+// explicit authorization header in Headers takes precedence over it.
+func requestMetadataHeaders(req Request) []string {
+	headers := make([]string, 0, len(req.Headers)+1)
+	explicitAuth := false
+	for _, hdr := range req.Headers {
+		if hdr.Key == "" {
+			continue
+		}
+		if strings.EqualFold(hdr.Key, "authorization") {
+			explicitAuth = true
+		}
+		headers = append(headers, fmt.Sprintf("%s: %s", hdr.Key, hdr.Value))
+	}
+	if req.BearerToken != "" && !explicitAuth {
+		headers = append(headers, fmt.Sprintf("authorization: Bearer %s", req.BearerToken))
+	}
+	return headers
+}
+
+func (h *Component) connectAndDiscover(ctx context.Context, settings *Settings) error {
 	var addr = settings.Address
 
 	if addr == "" {
 		return fmt.Errorf("server address is empty")
 	}
 
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr, buildDialOptions(settings)...)
 	if err != nil {
 		return err
 	}
 	//
 	h.clientConn = conn
 
-	md := grpcurl.MetadataFromHeaders([]string{})
-	refCtx := metadata.NewOutgoingContext(ctx, md)
-
-	refClient := grpcreflect.NewClientAuto(refCtx, conn)
+	// Reflection/discovery runs at settings time, before any Request message
+	// exists — auth metadata lives on the Request port, so there is nothing
+	// to attach here. Servers that gate reflection behind auth will need it
+	// added at the settings level if that ever comes up.
+	refClient := grpcreflect.NewClientAuto(ctx, conn)
 
 	defer refClient.Reset()
 
