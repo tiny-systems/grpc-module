@@ -14,8 +14,10 @@ import (
 	"github.com/tiny-systems/module/module"
 	"github.com/tiny-systems/module/registry"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
@@ -116,13 +118,9 @@ func (h *Component) Handle(ctx context.Context, handler module.Handler, port str
 
 	data, err := h.invoke(ctx, in.Request)
 	if err != nil {
-		// Left unmarked on purpose, transient causes included. Which method this
-		// calls is chosen at configure time out of whatever the server exposes by
-		// reflection, so we have no idea whether it is a read or a charge. Worse,
-		// a dropped connection or DEADLINE_EXCEEDED tells us nothing about
-		// whether the server ran it — the classic ambiguous-failure case. Only
-		// the flow author knows their method is idempotent; if it is, they can
-		// wire this port into the retry component themselves.
+		// invoke classifies the failure by gRPC status code (transient codes are
+		// marked module.Retryable, client-fault codes module.Permanent), so both
+		// the Fail path and the error-port payload carry retryability.
 		if !h.settings.EnableErrorPort {
 			return module.Fail(err)
 		}
@@ -157,7 +155,26 @@ func (h *Component) invoke(ctx context.Context, msg any) ([]byte, error) {
 	//
 	resp, err := grpcdynamic.NewStub(h.clientConn).InvokeRpc(ctx, h.currentMethodDesc, inputMsg)
 	if err != nil {
-		return nil, err
+		if st, ok := status.FromError(err); ok {
+			switch st.Code() {
+			case codes.Unavailable, codes.ResourceExhausted:
+				// The server refused the request before doing the work —
+				// a backoff retry can clear it without double-executing.
+				// DeadlineExceeded and Aborted are deliberately NOT marked:
+				// they can fire after the method started executing, and this
+				// client calls arbitrary reflected methods whose idempotency
+				// is unknowable — a retry could apply a side effect twice.
+				return nil, module.Retryable(err)
+			case codes.InvalidArgument, codes.NotFound, codes.PermissionDenied,
+				codes.Unauthenticated, codes.Unimplemented, codes.FailedPrecondition:
+				// Client-fault codes — retrying the same request cannot succeed.
+				return nil, module.Permanent(err)
+			}
+			return nil, err
+		}
+		// No gRPC status at all: the call never reached a server reply
+		// (dial/transport failure) — transient by nature.
+		return nil, module.Retryable(err)
 	}
 
 	respData, err := protojson.Marshal(resp)
